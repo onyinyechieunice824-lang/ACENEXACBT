@@ -7,6 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import axios from 'axios';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -14,35 +15,30 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(cors()); // Allow all origins to prevent preview CORS issues
 app.use(express.json({ limit: '50mb' })); 
 
-// Supabase Client
+// --- CONFIGURATION ---
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-
-// --- PAYSTACK SECRET KEY ---
-// Security Note: Always use environment variables for Secret Keys.
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
 
+// Validation
 if (!supabaseUrl || !supabaseKey) {
-  console.error("Missing Supabase credentials in .env file");
+  console.error("CRITICAL: Missing Supabase credentials in Environment Variables.");
 }
 
-if (!paystackSecretKey) {
-    console.warn("WARNING: PAYSTACK_SECRET_KEY is not set in .env. Payment verification will fail.");
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Initialize Supabase safely
+// If credentials missing, create a dummy client to prevent server crash
+const supabase = createClient(
+    supabaseUrl || 'https://placeholder.supabase.co', 
+    supabaseKey || 'placeholder', 
+    { auth: { persistSession: false } }
+);
 
 // --- HELPER FUNCTIONS ---
 const generateTokenCode = (prefix = 'EBUS') => {
-    // Character set: 32 chars (Base32 friendly).
-    // Removed ambiguous characters (I, 1, O, 0) to reduce user error.
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; 
-    
-    // We use 12 random characters for high entropy (32^12 combinations).
-    // 256 (byte value) is divisible by 32 (char length), so no modulo bias exists.
     const length = 12;
     const randomBytes = crypto.randomBytes(length);
     
@@ -51,33 +47,32 @@ const generateTokenCode = (prefix = 'EBUS') => {
         const index = randomBytes[i] % chars.length;
         result += chars[index];
     }
-
-    // Format: PREFIX-XXXX-XXXX-XXXX (Groups of 4 for readability)
     return `${prefix}-${result.slice(0, 4)}-${result.slice(4, 8)}-${result.slice(8, 12)}`;
 };
 
 // --- API ROUTES ---
 
+// Health Check
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
+
 // 1. PAYMENT VERIFICATION & TOKEN GENERATION
 app.post('/api/payments/verify-paystack', async (req, res) => {
     const { reference, email, fullName, phoneNumber } = req.body;
 
-    if (!reference) {
-        return res.status(400).json({ error: "Missing transaction reference." });
-    }
+    if (!reference) return res.status(400).json({ error: "Missing transaction reference." });
+    if (!paystackSecretKey) return res.status(500).json({ error: "Server misconfiguration: Missing Paystack Key" });
 
     try {
-        // STEP 1: IDEMPOTENCY CHECK
-        // Check if this payment reference has already been used to generate a token.
-        // This prevents Replay Attacks where a user sends the same valid reference multiple times.
-        const { data: existingToken, error: searchError } = await supabase
+        // IDEMPOTENCY CHECK
+        const { data: existingToken } = await supabase
             .from('access_tokens')
             .select('token_code, is_active')
             .eq('metadata->>payment_ref', reference)
             .single();
 
         if (existingToken) {
-            console.log(`Payment ref ${reference} already processed. Returning existing token.`);
             return res.json({ 
                 success: true, 
                 token: existingToken.token_code, 
@@ -85,41 +80,32 @@ app.post('/api/payments/verify-paystack', async (req, res) => {
             });
         }
 
-        // STEP 2: SERVER-SIDE VERIFICATION WITH PAYSTACK
-        // We verify the status directly with Paystack using our Secret Key.
-        // This cannot be spoofed by the client.
+        // VERIFY WITH PAYSTACK
         const paystackUrl = `https://api.paystack.co/transaction/verify/${reference}`;
         const verifyRes = await axios.get(paystackUrl, {
-            headers: {
-                Authorization: `Bearer ${paystackSecretKey}`
-            }
+            headers: { Authorization: `Bearer ${paystackSecretKey}` }
         });
 
         const data = verifyRes.data.data;
 
-        // STEP 3: SECURITY CHECKS
-        // A. Verify Status
         if (data.status !== 'success') {
             return res.status(400).json({ error: "Payment verification failed: Transaction was not successful." });
         }
 
-        // B. Verify Amount (Expected: N2,000 = 200000 kobo)
-        const EXPECTED_AMOUNT = 200000;
+        const EXPECTED_AMOUNT = 200000; // N2,000.00
         if (data.amount < EXPECTED_AMOUNT) {
-            console.warn(`Fraud Alert: Payment amount ${data.amount} is less than expected ${EXPECTED_AMOUNT}`);
             return res.status(400).json({ error: "Payment verification failed: Invalid amount paid." });
         }
 
-        // 4. Generate Access Token
-        const prefix = 'EBUS';
-        const tokenCode = generateTokenCode(prefix);
+        // GENERATE TOKEN
+        const tokenCode = generateTokenCode('EBUS');
         
         const { data: dbData, error } = await supabase
             .from('access_tokens')
             .insert([{
                 token_code: tokenCode,
                 is_active: true,
-                device_fingerprint: null, // Unlocked initially
+                device_fingerprint: null,
                 metadata: {
                     payment_ref: reference,
                     amount_paid: data.amount / 100,
@@ -143,14 +129,11 @@ app.post('/api/payments/verify-paystack', async (req, res) => {
     }
 });
 
-// ADMIN: Manually Generate Token (Cash/Transfer)
+// ADMIN ROUTES
 app.post('/api/admin/generate-token', async (req, res) => {
     const { reference, amount, examType, fullName, phoneNumber } = req.body;
-    console.log(`Manual Generation Request: ${fullName} (${examType})`);
-
     try {
         const tokenCode = generateTokenCode('EBUS');
-        
         const { data, error } = await supabase
             .from('access_tokens')
             .insert([{
@@ -169,146 +152,62 @@ app.post('/api/admin/generate-token', async (req, res) => {
             .select()
             .single();
 
-        if (error) {
-            console.error("Database Insert Error:", error.message);
-            throw error;
-        }
-
-        console.log(`Token Generated: ${data.token_code}`);
+        if (error) throw error;
         res.json({ success: true, token: data.token_code });
     } catch (err) {
-        console.error("Manual Token Generation Failed:", err.message);
-        res.status(500).json({ error: "Token generation failed: " + err.message });
+        res.status(500).json({ error: err.message });
     }
 });
 
-// ADMIN: Toggle Token Status
 app.post('/api/admin/token-status', async (req, res) => {
     const { tokenCode, isActive } = req.body;
     try {
-        const { error } = await supabase
-            .from('access_tokens')
-            .update({ is_active: isActive })
-            .eq('token_code', tokenCode);
-
+        const { error } = await supabase.from('access_tokens').update({ is_active: isActive }).eq('token_code', tokenCode);
         if (error) throw error;
         res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ADMIN: Reset Token Device Lock
 app.post('/api/admin/reset-token-device', async (req, res) => {
     const { tokenCode } = req.body;
     try {
-        const { error } = await supabase
-            .from('access_tokens')
-            .update({ device_fingerprint: null })
-            .eq('token_code', tokenCode);
-
+        const { error } = await supabase.from('access_tokens').update({ device_fingerprint: null }).eq('token_code', tokenCode);
         if (error) throw error;
         res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ADMIN: Get Recent Tokens
 app.get('/api/admin/tokens', async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('access_tokens')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(50);
-            
+        const { data, error } = await supabase.from('access_tokens').select('*').order('created_at', { ascending: false }).limit(50);
         if (error) throw error;
         res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 2. AUTHENTICATION (TOKEN & DEVICE LOCK)
+// AUTH
 app.post('/api/auth/login-with-token', async (req, res) => {
   const { token, deviceFingerprint, confirm_binding } = req.body;
-  
   try {
-    // A. Check if token exists
-    const { data: tokenData, error } = await supabase
-      .from('access_tokens')
-      .select('*')
-      .eq('token_code', token)
-      .single();
+    const { data: tokenData, error } = await supabase.from('access_tokens').select('*').eq('token_code', token).single();
+    if (error || !tokenData) return res.status(401).json({ error: 'Invalid Access Token.' });
+    if (!tokenData.is_active) return res.status(403).json({ error: 'This token has been deactivated.' });
 
-    if (error || !tokenData) {
-      return res.status(401).json({ error: 'Invalid Access Token.' });
-    }
-
-    if (!tokenData.is_active) {
-        return res.status(403).json({ error: 'This token has been deactivated.' });
-    }
-
-    // Determine exam type permissions
-    let allowedExamType = 'BOTH'; 
-    if (tokenData.metadata && tokenData.metadata.exam_type) {
-        allowedExamType = tokenData.metadata.exam_type;
-    }
-    
-    // Retrieve User Name
+    const allowedExamType = tokenData.metadata?.exam_type || 'BOTH';
     const fullName = tokenData.metadata?.full_name || 'Student';
 
-    // B. DEVICE LOCKING LOGIC
     if (!tokenData.device_fingerprint) {
-        // NEW: REQUIRE CONFIRMATION BEFORE BINDING
-        if (!confirm_binding) {
-            return res.json({ requires_binding: true });
-        }
-
-        // First time use! Bind to this device.
-        const { error: updateError } = await supabase
-            .from('access_tokens')
-            .update({ device_fingerprint: deviceFingerprint })
-            .eq('id', tokenData.id);
-        
+        if (!confirm_binding) return res.json({ requires_binding: true });
+        const { error: updateError } = await supabase.from('access_tokens').update({ device_fingerprint: deviceFingerprint }).eq('id', tokenData.id);
         if (updateError) throw updateError;
-        
-        // Return session user
-        return res.json({
-            username: tokenData.token_code,
-            role: 'student', 
-            fullName: fullName, 
-            regNumber: tokenData.token_code,
-            isTokenLogin: true,
-            allowedExamType
-        });
-
     } else {
-        // Subsequent use: Verify Device
-        if (tokenData.device_fingerprint !== deviceFingerprint) {
-            return res.status(403).json({ 
-                error: '⛔ SECURITY ALERT: This Access Code is locked to another device. You cannot use it here.' 
-            });
-        }
-
-        // Device Match! Log in.
-        return res.json({
-            username: tokenData.token_code,
-            role: 'student',
-            fullName: fullName,
-            regNumber: tokenData.token_code,
-            isTokenLogin: true,
-            allowedExamType
-        });
+        if (tokenData.device_fingerprint !== deviceFingerprint) return res.status(403).json({ error: '⛔ ACCESS DENIED: Token locked to another device.' });
     }
 
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    return res.json({ username: tokenData.token_code, role: 'student', fullName, regNumber: tokenData.token_code, isTokenLogin: true, allowedExamType });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Existing Admin Login (Keep this for Admins)
 app.post('/api/auth/login', async (req, res) => {
   const { username, password, role } = req.body;
   try {
@@ -319,11 +218,43 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ... (Questions/Results APIs) ...
+// New Route: Register Manual Student
+app.post('/api/auth/register', async (req, res) => {
+    const { fullName, regNumber } = req.body;
+    try {
+        const { data, error } = await supabase.from('users').insert([{
+            username: regNumber,
+            role: 'student',
+            full_name: fullName,
+            reg_number: regNumber,
+            password: null, // Students don't have passwords in this mode
+            allowed_exam_type: 'BOTH'
+        }]).select().single();
+        
+        if (error) throw error;
+        res.json({ success: true, user: data });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// DATA
 app.get('/api/users/students', async (req, res) => {
   const { data, error } = await supabase.from('users').select('*').eq('role', 'student');
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
+});
+
+// New Route: Delete User
+app.delete('/api/users/:username', async (req, res) => {
+    const { username } = req.params;
+    try {
+        const { error } = await supabase.from('users').delete().eq('username', username);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.get('/api/questions', async (req, res) => {
@@ -336,7 +267,6 @@ app.get('/api/questions', async (req, res) => {
   }));
   res.json(mapped);
 });
-
 app.post('/api/questions', async (req, res) => {
   const q = req.body;
   const dbQuestion = {
@@ -348,7 +278,6 @@ app.post('/api/questions', async (req, res) => {
   if (error) return res.status(400).json({ error: error.message });
   res.json(data[0]);
 });
-
 app.post('/api/questions/bulk', async (req, res) => {
   const questions = req.body;
   const dbQuestions = questions.map(q => ({
@@ -360,19 +289,16 @@ app.post('/api/questions/bulk', async (req, res) => {
   if (error) return res.status(400).json({ error: error.message });
   res.json({ count: data.length });
 });
-
 app.delete('/api/questions/:id', async (req, res) => {
   const { error } = await supabase.from('questions').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
-
 app.delete('/api/questions/reset/all', async (req, res) => {
   const { error } = await supabase.from('questions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
-
 app.get('/api/results/:username', async (req, res) => {
   const { data, error } = await supabase.from('results').select('*').eq('user_username', req.params.username).order('created_at', { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
@@ -382,7 +308,6 @@ app.get('/api/results/:username', async (req, res) => {
   }));
   res.json(mapped);
 });
-
 app.post('/api/results', async (req, res) => {
   const { username, result } = req.body;
   const dbResult = {
@@ -393,21 +318,32 @@ app.post('/api/results', async (req, res) => {
   if (error) return res.status(400).json({ error: error.message });
   res.json({ success: true });
 });
-
 app.delete('/api/results/:username', async (req, res) => {
   const { error } = await supabase.from('results').delete().eq('user_username', req.params.username);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
 
-// --- SERVE FRONTEND ---
+// --- SERVE FRONTEND (Any Environment) ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-  });
+const distPath = path.join(__dirname, 'dist');
+
+// Always attempt to serve dist if it exists
+if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+    });
+} else {
+    // Helpful message if build is missing
+    app.get('*', (req, res) => {
+        res.status(503).send(`
+            <h1>Website Building...</h1>
+            <p>The backend is running, but the frontend files are missing.</p>
+            <p><strong>Deployment Note:</strong> Ensure your Build Command is set to: <code>npm install && npm run build</code></p>
+        `);
+    });
 }
 
 app.listen(PORT, () => {
