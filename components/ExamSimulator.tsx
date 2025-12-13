@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ExamSession, Question, Subject } from '../types';
-import { Timer, ChevronLeft, ChevronRight, CheckSquare, Flag, Calculator as CalcIcon, X, Delete, GraduationCap, Grid, Maximize, Minimize, AlertCircle, Keyboard, MousePointer2, Moon, Sun, BarChart } from 'lucide-react';
+import { Timer, ChevronLeft, ChevronRight, CheckSquare, Flag, Calculator as CalcIcon, X, Delete, GraduationCap, Grid, Maximize, Minimize, AlertCircle, Keyboard, MousePointer2, Moon, Sun, BarChart, Move } from 'lucide-react';
 import { Button } from './Button';
 import { User } from '../services/auth';
 import { JambLogo, WaecLogo, AcenexaLogo } from './ExamLogos';
@@ -28,6 +28,12 @@ export const ExamSimulator: React.FC<Props> = ({ session: initialSession, onSubm
   const [calcInput, setCalcInput] = useState('');
   
   const [isNavigating, setIsNavigating] = useState(false);
+
+  // Calculator Dragging State
+  const [calcPos, setCalcPos] = useState({ x: 0, y: 0 });
+  const [isDraggingCalc, setIsDraggingCalc] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const startPos = useRef({ x: 0, y: 0 });
 
   const currentQIndexRef = useRef(currentQIndex);
   const currentSubjectRef = useRef(currentSubject);
@@ -126,6 +132,49 @@ export const ExamSimulator: React.FC<Props> = ({ session: initialSession, onSubm
       document.addEventListener('fullscreenchange', handleFsChange);
       return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
+
+  // Handle Dragging Events for Calculator
+  useEffect(() => {
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDraggingCalc) return;
+      e.preventDefault(); // Prevent scrolling on mobile while dragging
+      
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+      
+      const dx = clientX - dragStart.current.x;
+      const dy = clientY - dragStart.current.y;
+      
+      setCalcPos({ x: startPos.current.x + dx, y: startPos.current.y + dy });
+    };
+
+    const handleUp = () => {
+      setIsDraggingCalc(false);
+    };
+
+    if (isDraggingCalc) {
+      window.addEventListener('mousemove', handleMove, { passive: false });
+      window.addEventListener('touchmove', handleMove, { passive: false });
+      window.addEventListener('mouseup', handleUp);
+      window.addEventListener('touchend', handleUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+      window.removeEventListener('touchend', handleUp);
+    };
+  }, [isDraggingCalc]);
+
+  const onDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+      setIsDraggingCalc(true);
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+      
+      dragStart.current = { x: clientX, y: clientY };
+      startPos.current = { ...calcPos };
+  };
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -417,11 +466,25 @@ export const ExamSimulator: React.FC<Props> = ({ session: initialSession, onSubm
         </div>
       </header>
 
-      {/* CALCULATOR & MOBILE GRID */}
+      {/* CALCULATOR (Draggable) */}
       {showCalculator && (
-        <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 md:absolute md:top-16 md:left-auto md:right-24 md:translate-x-0 md:translate-y-0 z-50 w-72 md:w-64 bg-gray-800 rounded-xl shadow-2xl border border-gray-600 overflow-hidden">
-            <div className="bg-gray-900 p-2 flex justify-between items-center cursor-move">
-                <span className="text-xs font-bold text-gray-400 pl-2">CALCULATOR</span>
+        <div 
+            className="fixed z-50 w-72 md:w-64 bg-gray-800 rounded-xl shadow-2xl border border-gray-600 overflow-hidden"
+            style={{ 
+                top: '50%', 
+                left: '50%', 
+                transform: `translate(calc(-50% + ${calcPos.x}px), calc(-50% + ${calcPos.y}px))` 
+            }}
+        >
+            <div 
+                className="bg-gray-900 p-2 flex justify-between items-center cursor-move touch-none"
+                onMouseDown={onDragStart}
+                onTouchStart={onDragStart}
+            >
+                <div className="flex items-center gap-2">
+                    <Move size={14} className="text-gray-500"/>
+                    <span className="text-xs font-bold text-gray-400 select-none">CALCULATOR</span>
+                </div>
                 <button onClick={() => setShowCalculator(false)} className="text-gray-400 hover:text-white p-1"><X size={14}/></button>
             </div>
             <div className="p-4">
