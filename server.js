@@ -58,7 +58,7 @@ const supabase = createClient(
 );
 
 // --- HELPER FUNCTIONS ---
-const generateTokenCode = (prefix = 'EBUS') => {
+const generateTokenCode = (prefix = 'ACE') => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; 
     const length = 12;
     const randomBytes = crypto.randomBytes(length);
@@ -121,7 +121,7 @@ app.post('/api/payments/verify-paystack', async (req, res) => {
         }
 
         // GENERATE TOKEN
-        const tokenCode = generateTokenCode('EBUS');
+        const tokenCode = generateTokenCode('ACE');
         
         // Use examType passed from frontend, default to BOTH if missing (legacy support)
         const finalExamType = examType || 'BOTH';
@@ -159,7 +159,7 @@ app.post('/api/payments/verify-paystack', async (req, res) => {
 app.post('/api/admin/generate-token', async (req, res) => {
     const { reference, amount, examType, fullName, phoneNumber } = req.body;
     try {
-        const tokenCode = generateTokenCode('EBUS');
+        const tokenCode = generateTokenCode('ACE');
         const { data, error } = await supabase
             .from('access_tokens')
             .insert([{

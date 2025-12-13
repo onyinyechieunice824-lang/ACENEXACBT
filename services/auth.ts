@@ -119,7 +119,7 @@ const saveLocalStudent = (user: User) => {
 };
 
 // --- SECURE TOKEN GENERATOR ---
-const generateSecureToken = (prefix: string = 'EBUS') => {
+const generateSecureToken = (prefix: string = 'ACE') => {
     // Generates a format like: PREFIX-XXXX-XXXX-XXXX
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I, 1, O, 0
     const length = 12; // Increased entropy to 12 chars
@@ -292,7 +292,7 @@ export const verifyPaystackPayment = async (reference: string, email: string, fu
  * Used when API is unreachable or times out.
  */
 export const generateLocalTokenImmediate = (reference: string, amount: number, examType: string, fullName: string, phoneNumber: string) => {
-    const prefix = FORCE_OFFLINE ? 'EBUS' : 'LOCAL';
+    const prefix = FORCE_OFFLINE ? 'ACE' : 'LOCAL';
     const token = generateSecureToken(prefix);
     
     saveLocalToken({

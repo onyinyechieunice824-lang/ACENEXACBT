@@ -51,7 +51,7 @@ const getCanvasFingerprint = (): string => {
         ctx.fillRect(125, 1, 62, 20);
         
         ctx.fillStyle = "#069";
-        ctx.fillText("EBUS-AUTH", 2, 15);
+        ctx.fillText("ACE-AUTH", 2, 15);
         ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
         ctx.fillText("LOCK", 4, 17);
         

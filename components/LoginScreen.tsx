@@ -5,7 +5,7 @@ import { User, loginUser, loginWithToken, verifyPaystackPayment } from '../servi
 import { BookOpen, AlertCircle, Lock, User as UserIcon, HelpCircle, ArrowLeft, GraduationCap, CheckCircle, Moon, Sun, Key, Smartphone, ShieldCheck, CreditCard, ChevronRight, Calendar, Hash, Banknote, Shield, MessageCircle, Copy, Building2, WifiOff, Check } from 'lucide-react';
 import { ExamType } from '../types';
 import { PAYSTACK_PUBLIC_KEY } from '../services/config';
-import { JambLogo, WaecLogo, JointLogo } from './ExamLogos';
+import { JambLogo, WaecLogo, JointLogo, AcenexaLogo } from './ExamLogos';
 
 interface Props {
   onLogin: (user: User, examType: ExamType) => void;
@@ -244,7 +244,7 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
       )}
 
       <div className="relative z-10 flex flex-col min-h-screen">
-        <div className="bg-[#006600] dark:bg-green-900 text-white py-6 px-4 shadow-xl border-b-4 border-yellow-500 relative">
+        <div className="bg-[#004d40] dark:bg-green-900 text-white py-6 px-4 shadow-xl border-b-4 border-yellow-500 relative">
             <button 
                 onClick={toggleTheme} 
                 className="absolute top-4 right-4 p-2 rounded-full hover:bg-green-700/50 text-white transition-colors"
@@ -254,11 +254,11 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
             </button>
             <div className="max-w-6xl mx-auto flex flex-col items-center justify-center text-center gap-3">
                 <div className="bg-white p-2 rounded-full border-2 border-yellow-500 shadow-md">
-                    <GraduationCap className="text-[#006600] w-10 h-10 md:w-12 md:h-12" />
+                    <AcenexaLogo className="w-12 h-12 md:w-16 md:h-16" />
                 </div>
                 <div>
-                    <h1 className="text-2xl md:text-4xl font-black uppercase tracking-wide leading-tight drop-shadow-md text-white">EBUS EDU CONSULT (EEC)</h1>
-                    <p className="text-yellow-400 text-xs md:text-sm font-bold uppercase tracking-[0.25em] mt-2 text-shadow-sm">CBT Practice Portal</p>
+                    <h1 className="text-2xl md:text-4xl font-black uppercase tracking-wide leading-tight drop-shadow-md text-white">ACENEXA CBT</h1>
+                    <p className="text-yellow-400 text-xs md:text-sm font-bold uppercase tracking-[0.25em] mt-2 text-shadow-sm">Prepare Smart. Score Higher.</p>
                 </div>
             </div>
         </div>
@@ -341,7 +341,7 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
                                     <label className="block text-xs font-bold text-gray-600 dark:text-gray-400 uppercase mb-1">Enter Access Code</label>
                                     <input 
                                         type="text" 
-                                        placeholder="e.g. EBUS-ABCD-1234-WXYZ" 
+                                        placeholder="e.g. ACE-ABCD-1234-WXYZ" 
                                         className="w-full p-4 border-2 border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:border-green-600 focus:ring-1 focus:ring-green-600 outline-none transition-colors text-center font-mono text-lg uppercase tracking-widest" 
                                         value={tokenInput}
                                         onChange={e => setTokenInput(e.target.value)}
@@ -349,7 +349,7 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
                                         autoFocus
                                     />
                                 </div>
-                                <Button isLoading={isLoading && !showBindConfirm} className="w-full bg-[#006600] hover:bg-green-800 text-white font-bold py-4 rounded uppercase text-sm tracking-wider shadow-md">
+                                <Button isLoading={isLoading && !showBindConfirm} className="w-full bg-[#004d40] hover:bg-green-800 text-white font-bold py-4 rounded uppercase text-sm tracking-wider shadow-md">
                                     Login & Lock to Device
                                 </Button>
                             </form>
@@ -623,7 +623,7 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
                                 required
                             />
                             </div>
-                            <Button isLoading={isLoading} className="w-full bg-[#006600] text-white font-bold py-3 rounded uppercase text-sm">
+                            <Button isLoading={isLoading} className="w-full bg-[#004d40] text-white font-bold py-3 rounded uppercase text-sm">
                                 Enter Admin Panel
                             </Button>
                         </form>
@@ -633,7 +633,7 @@ export const LoginScreen: React.FC<Props> = ({ onLogin, theme, toggleTheme, isOn
         </div>
         
         <footer className="bg-green-950/80 backdrop-blur-sm border-t border-green-800 py-4 text-center text-xs text-green-100/70 font-medium">
-            &copy; {new Date().getFullYear()} EBUS EDU CONSULT (EEC). All Rights Reserved.
+            &copy; {new Date().getFullYear()} ACENEXA CBT. All Rights Reserved.
         </footer>
       </div>
     </div>

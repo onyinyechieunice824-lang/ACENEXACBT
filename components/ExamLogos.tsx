@@ -30,3 +30,19 @@ export const JointLogo: React.FC<LogoProps> = ({ className = "w-12 h-8" }) => (
         <WaecLogo className="w-full h-full" />
     </div>
 );
+
+export const AcenexaLogo: React.FC<LogoProps> = ({ className = "w-12 h-12" }) => (
+  <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg">
+    {/* Ring */}
+    <circle cx="50" cy="50" r="45" stroke="#064e3b" strokeWidth="6" fill="white"/>
+    
+    {/* Cap */}
+    <path d="M20 35 L50 20 L80 35 L50 50 Z" fill="#EAB308" />
+    <path d="M25 40 V55 C25 65 50 70 50 70 C50 70 75 65 75 55 V40" fill="#EAB308" />
+    <path d="M80 35 V50" stroke="#EAB308" strokeWidth="3" />
+    <circle cx="80" cy="52" r="3" fill="#EAB308" />
+
+    {/* Checkmark overlaying bottom */}
+    <path d="M35 60 L48 73 L70 45" stroke="#064e3b" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);

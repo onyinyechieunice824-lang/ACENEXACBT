@@ -6,6 +6,7 @@ import { Button } from './Button';
 import { User, changePassword } from '../services/auth';
 import { getStudentResults } from '../services/db';
 import { ContactModal } from './ContactModal';
+import { AcenexaLogo } from './ExamLogos';
 
 interface Props {
   onStartExam: (subjects: Subject[]) => void;
@@ -140,10 +141,10 @@ export const SubjectSelection: React.FC<Props> = ({ onStartExam, hasSavedSession
             <div className="flex items-center gap-3 md:gap-4 w-full md:w-auto justify-between md:justify-start">
                 <div className="flex items-center gap-3">
                     <div className={`bg-white p-1.5 md:p-2 rounded-full border-2 ${isJamb ? 'border-yellow-500' : 'border-white'}`}>
-                        <GraduationCap className={`${isJamb ? 'text-green-800' : 'text-blue-800'} w-6 h-6 md:w-8 md:h-8`} />
+                        <AcenexaLogo className={`w-6 h-6 md:w-8 md:h-8`} />
                     </div>
                     <div>
-                        <h1 className="text-xl md:text-2xl font-bold tracking-tight">EBUS EDU</h1>
+                        <h1 className="text-xl md:text-2xl font-bold tracking-tight">ACENEXA</h1>
                         <p className={`text-[10px] md:text-xs font-semibold uppercase tracking-wider text-yellow-400`}>{examType} CBT Portal</p>
                     </div>
                 </div>

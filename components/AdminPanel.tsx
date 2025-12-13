@@ -462,7 +462,7 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
                         <GraduationCap className="text-green-800 w-6 h-6 md:w-8 md:h-8" />
                     </div>
                     <div>
-                        <h1 className="text-lg md:text-xl font-bold tracking-tight">EBUS EDU CONSULT (EEC)</h1>
+                        <h1 className="text-lg md:text-xl font-bold tracking-tight">ACENEXA CBT</h1>
                         <p className="text-yellow-400 text-[10px] font-bold uppercase tracking-widest">Admin Control Center</p>
                     </div>
                 </div>

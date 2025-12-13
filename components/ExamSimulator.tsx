@@ -4,7 +4,7 @@ import { ExamSession, Question, Subject } from '../types';
 import { Timer, ChevronLeft, ChevronRight, CheckSquare, Flag, Calculator as CalcIcon, X, Delete, GraduationCap, Grid, Maximize, Minimize, AlertCircle, Keyboard, MousePointer2, Moon, Sun, BarChart } from 'lucide-react';
 import { Button } from './Button';
 import { User } from '../services/auth';
-import { JambLogo, WaecLogo } from './ExamLogos';
+import { JambLogo, WaecLogo, AcenexaLogo } from './ExamLogos';
 
 interface Props {
   session: ExamSession;
@@ -220,7 +220,7 @@ export const ExamSimulator: React.FC<Props> = ({ session: initialSession, onSubm
   const getExamLogo = () => {
       if (session.examType === 'JAMB') return <JambLogo className="w-8 h-8 md:w-10 md:h-10" />;
       if (session.examType === 'WAEC') return <WaecLogo className="w-8 h-8 md:w-10 md:h-10" />;
-      return <GraduationCap className="text-green-800 dark:text-green-400 w-6 h-6 md:w-8 md:h-8"/>;
+      return <AcenexaLogo className="w-6 h-6 md:w-8 md:h-8"/>;
   };
 
   // Progress Calculation
@@ -328,7 +328,7 @@ export const ExamSimulator: React.FC<Props> = ({ session: initialSession, onSubm
         <div className="flex items-center gap-2 md:gap-4 overflow-hidden">
           <div className="flex items-center gap-2 md:border-r border-gray-200 dark:border-gray-700 md:pr-4 md:mr-2 shrink-0">
              {getExamLogo()}
-             <span className="font-bold text-green-900 dark:text-green-300 tracking-tight hidden md:inline">EBUS EDU (EEC)</span>
+             <span className="font-bold text-green-900 dark:text-green-300 tracking-tight hidden md:inline">ACENEXA</span>
           </div>
           
           <div className="w-8 h-8 md:w-10 md:h-10 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center text-xs text-gray-500 dark:text-gray-400 font-bold border-2 border-green-200 dark:border-green-800 shrink-0">
