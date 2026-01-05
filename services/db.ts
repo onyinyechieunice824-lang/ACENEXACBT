@@ -1,11 +1,34 @@
 
-import { Question, Subject, ExamSession, ExamResult, ExamType } from '../types';
+import { Question, Subject, ExamSession, ExamResult, ExamType, SubjectInfo } from '../types';
 import { getApiUrl, FORCE_OFFLINE } from './config';
 
 // Global Cache to maintain synchronous feel for Exam Engine where possible
 let GLOBAL_QUESTION_BANK: Question[] = [];
+let GLOBAL_SUBJECTS_CACHE: SubjectInfo[] = [];
 const CACHE_KEY_QUESTIONS = 'jamb_cbt_questions_cache';
+const CACHE_KEY_SUBJECTS = 'jamb_cbt_subjects_cache';
 const CACHE_KEY_OFFLINE_RESULTS = 'jamb_cbt_offline_results';
+
+// Default subjects to seed if database is empty
+const DEFAULT_SUBJECTS: Omit<SubjectInfo, 'id' | 'created_at'>[] = [
+    { name: 'English', category: 'General', is_compulsory: true },
+    { name: 'Mathematics', category: 'General', is_compulsory: false },
+    { name: 'Civic Education', category: 'General', is_compulsory: false },
+    { name: 'Physics', category: 'Science', is_compulsory: false },
+    { name: 'Chemistry', category: 'Science', is_compulsory: false },
+    { name: 'Biology', category: 'Science', is_compulsory: false },
+    { name: 'Further Mathematics', category: 'Science', is_compulsory: false },
+    { name: 'Agricultural Science', category: 'Science', is_compulsory: false },
+    { name: 'Geography', category: 'Science', is_compulsory: false },
+    { name: 'Computer Studies', category: 'Science', is_compulsory: false },
+    { name: 'Economics', category: 'Commercial', is_compulsory: false },
+    { name: 'Commerce', category: 'Commercial', is_compulsory: false },
+    { name: 'Financial Accounting', category: 'Commercial', is_compulsory: false },
+    { name: 'Government', category: 'Arts', is_compulsory: false },
+    { name: 'Literature', category: 'Arts', is_compulsory: false },
+    { name: 'CRS', category: 'Arts', is_compulsory: false },
+    { name: 'History', category: 'Arts', is_compulsory: false },
+];
 
 // --- MOCK DATA FOR OFFLINE/PREVIEW MODE ---
 const MOCK_QUESTIONS: Question[] = [
@@ -70,6 +93,86 @@ const apiRequest = async (endpoint: string, method: string, body?: any) => {
     }
 };
 
+// --- SUBJECT MANAGEMENT ---
+export const getAllSubjects = async (): Promise<SubjectInfo[]> => {
+    // Try to load from cache first
+    if (GLOBAL_SUBJECTS_CACHE.length === 0) {
+        const cached = localStorage.getItem(CACHE_KEY_SUBJECTS);
+        if (cached) {
+            try {
+                GLOBAL_SUBJECTS_CACHE = JSON.parse(cached);
+            } catch(e){}
+        }
+    }
+
+    if (FORCE_OFFLINE) {
+        if (GLOBAL_SUBJECTS_CACHE.length === 0) {
+            // Use defaults if nothing cached
+            GLOBAL_SUBJECTS_CACHE = DEFAULT_SUBJECTS.map((s, i) => ({
+                ...s,
+                id: `default-${i}`,
+                created_at: new Date().toISOString()
+            }));
+        }
+        return GLOBAL_SUBJECTS_CACHE;
+    }
+
+    try {
+        const subjects = await apiRequest('/api/subjects', 'GET');
+        if (Array.isArray(subjects)) {
+            GLOBAL_SUBJECTS_CACHE = subjects;
+            localStorage.setItem(CACHE_KEY_SUBJECTS, JSON.stringify(subjects));
+            return subjects;
+        }
+    } catch (e) {
+        console.warn("Failed to fetch subjects, using cache/defaults");
+    }
+
+    return GLOBAL_SUBJECTS_CACHE.length > 0 ? GLOBAL_SUBJECTS_CACHE : DEFAULT_SUBJECTS.map((s, i) => ({
+        ...s,
+        id: `default-${i}`,
+        created_at: new Date().toISOString()
+    }));
+};
+
+export const addSubject = async (name: string, category: 'General' | 'Science' | 'Commercial' | 'Arts', is_compulsory: boolean = false): Promise<SubjectInfo> => {
+    if (FORCE_OFFLINE) {
+        const newSubject: SubjectInfo = {
+            id: `offline-${Date.now()}`,
+            name,
+            category,
+            is_compulsory,
+            created_at: new Date().toISOString()
+        };
+        GLOBAL_SUBJECTS_CACHE.push(newSubject);
+        localStorage.setItem(CACHE_KEY_SUBJECTS, JSON.stringify(GLOBAL_SUBJECTS_CACHE));
+        return newSubject;
+    }
+
+    try {
+        const subject = await apiRequest('/api/subjects', 'POST', { name, category, is_compulsory });
+        await getAllSubjects(); // Refresh cache
+        return subject;
+    } catch (err: any) {
+        throw new Error(err.message || 'Failed to add subject');
+    }
+};
+
+export const deleteSubject = async (id: string) => {
+    if (FORCE_OFFLINE) {
+        GLOBAL_SUBJECTS_CACHE = GLOBAL_SUBJECTS_CACHE.filter(s => s.id !== id);
+        localStorage.setItem(CACHE_KEY_SUBJECTS, JSON.stringify(GLOBAL_SUBJECTS_CACHE));
+        return;
+    }
+
+    try {
+        await apiRequest(`/api/subjects/${id}`, 'DELETE');
+        await getAllSubjects(); // Refresh cache
+    } catch (err: any) {
+        throw new Error(err.message || 'Failed to delete subject');
+    }
+};
+
 // --- INITIALIZATION (WITH FALLBACKS) ---
 export const initializeDatabase = async () => {
     // 1. Load Local Cache or Mock
@@ -84,6 +187,9 @@ export const initializeDatabase = async () => {
         }
     }
 
+    // 2. Initialize subjects
+    await getAllSubjects();
+
     if (FORCE_OFFLINE) {
         console.log("Offline Mode: Database initialized from local cache/mock.");
         return true;
@@ -92,7 +198,7 @@ export const initializeDatabase = async () => {
     try {
         console.log("Attempting to fetch questions from API...");
         const questions = await apiRequest('/api/questions', 'GET');
-        
+
         if (Array.isArray(questions) && questions.length > 0) {
             GLOBAL_QUESTION_BANK = questions;
             try {
@@ -168,10 +274,14 @@ export const resetDatabase = async (clearAll: boolean = false) => {
 };
 
 export const getBankStats = () => {
-    const SUBJECTS: Subject[] = ['English', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Economics', 'Government', 'Literature', 'CRS', 'Agricultural Science', 'Geography', 'Commerce', 'Financial Accounting', 'Civic Education', 'Further Mathematics', 'History', 'Computer Studies'];
+    // Use subjects from cache (either loaded from API or defaults)
+    const subjects = GLOBAL_SUBJECTS_CACHE.length > 0
+        ? GLOBAL_SUBJECTS_CACHE.map(s => s.name)
+        : DEFAULT_SUBJECTS.map(s => s.name);
+
     const stats: Record<string, { JAMB: number, WAEC: number }> = {};
-  
-    SUBJECTS.forEach(sub => {
+
+    subjects.forEach(sub => {
         const subQs = GLOBAL_QUESTION_BANK.filter(q => q.subject === sub);
         stats[sub] = {
             JAMB: subQs.filter(q => q.examType === 'JAMB').length,

@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Subject, Question, ExamType } from '../types';
-import { addQuestionToBank, getBankStats, resetDatabase, clearStudentResults, addBulkQuestions, fetchAllQuestions, deleteQuestion } from '../services/db';
+import { Subject, Question, ExamType, SubjectInfo } from '../types';
+import { addQuestionToBank, getBankStats, resetDatabase, clearStudentResults, addBulkQuestions, fetchAllQuestions, deleteQuestion, getAllSubjects, addSubject, deleteSubject } from '../services/db';
 import { registerStudent, getAllStudents, deleteStudent, User, changePassword, generateManualToken, generateLocalTokenImmediate, getAllTokens, TokenInfo, updateAdminCredentials, toggleTokenStatus, resetTokenDevice, deleteToken } from '../services/auth';
-import { LogOut, Upload, Save, Database, FileText, CheckCircle, AlertTriangle, RefreshCw, Trash2, ShieldAlert, Users, Plus, Settings, List, Moon, Sun, Search, GraduationCap, Banknote, Copy, Check, Ban, Phone, User as UserIcon, Smartphone, WifiOff, X } from 'lucide-react';
+import { LogOut, Upload, Save, Database, FileText, CheckCircle, AlertTriangle, RefreshCw, Trash2, ShieldAlert, Users, Plus, Settings, List, Moon, Sun, Search, GraduationCap, Banknote, Copy, Check, Ban, Phone, User as UserIcon, Smartphone, WifiOff, X, BookOpen } from 'lucide-react';
 import { Button } from './Button';
 
 interface Props {
@@ -13,8 +13,6 @@ interface Props {
   isOnline: boolean;
 }
 
-const SUBJECTS: Subject[] = ['English', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Agricultural Science', 'Economics', 'Government', 'Literature', 'CRS', 'Geography', 'Commerce', 'Financial Accounting', 'Civic Education', 'Further Mathematics', 'History', 'Computer Studies'];
-
 interface LogEntry {
   line: number;
   status: 'success' | 'error';
@@ -22,9 +20,14 @@ interface LogEntry {
 }
 
 export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnline }) => {
-  const [activeTab, setActiveTab] = useState<'stats' | 'users' | 'add' | 'bulk' | 'questions' | 'tokens' | 'settings'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'users' | 'add' | 'bulk' | 'questions' | 'tokens' | 'settings' | 'subjects'>('stats');
   const [stats, setStats] = useState(getBankStats());
   const [isLoading, setIsLoading] = useState(false);
+
+  // Subject Management State
+  const [allSubjects, setAllSubjects] = useState<SubjectInfo[]>([]);
+  const [newSubjectName, setNewSubjectName] = useState('');
+  const [newSubjectCategory, setNewSubjectCategory] = useState<'General' | 'Science' | 'Commercial' | 'Arts'>('Science');
   
   // Student Management State
   const [students, setStudents] = useState<User[]>([]);
@@ -84,6 +87,13 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
       } catch(e) { console.error("Failed to load tokens:", e); }
   };
 
+  const loadSubjects = async () => {
+      try {
+          const list = await getAllSubjects();
+          setAllSubjects(list);
+      } catch(e) { console.error("Failed to load subjects:", e); }
+  };
+
   const loadQuestions = async () => {
       setIsLoading(true);
       try {
@@ -97,7 +107,11 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
   useEffect(() => {
     if (activeTab === 'users') loadStudents();
     if (activeTab === 'tokens') loadTokens();
-    if (activeTab === 'questions' || activeTab === 'stats') loadQuestions();
+    if (activeTab === 'subjects') loadSubjects();
+    if (activeTab === 'questions' || activeTab === 'stats' || activeTab === 'add' || activeTab === 'bulk') {
+        loadQuestions();
+        loadSubjects(); // Load subjects for dropdown
+    }
   }, [activeTab]);
 
   useEffect(() => {
@@ -359,7 +373,7 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
       if (adminProfile.newPassword !== adminProfile.confirmPassword) {
           return alert("New passwords do not match!");
       }
-      
+
       try {
           await updateAdminCredentials(
               adminProfile.currentUsername,
@@ -371,6 +385,38 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
           onBack(); // Logout to force re-login
       } catch (e: any) {
           alert(e.message);
+      }
+  };
+
+  const handleAddSubject = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newSubjectName.trim()) return alert("Please enter a subject name");
+
+      setIsLoading(true);
+      try {
+          await addSubject(newSubjectName.trim(), newSubjectCategory);
+          await loadSubjects();
+          await loadQuestions(); // Refresh stats
+          setNewSubjectName('');
+          alert(`${newSubjectName} added successfully!`);
+      } catch (e: any) {
+          alert(e.message);
+      }
+      setIsLoading(false);
+  };
+
+  const handleDeleteSubject = async (id: string, name: string) => {
+      if (confirm(`Delete ${name}? This will NOT delete associated questions.`)) {
+          setIsLoading(true);
+          try {
+              await deleteSubject(id);
+              await loadSubjects();
+              await loadQuestions(); // Refresh stats
+              alert(`${name} deleted successfully!`);
+          } catch (e: any) {
+              alert(e.message);
+          }
+          setIsLoading(false);
       }
   };
 
@@ -527,12 +573,13 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
                 </div>
                 <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
                     <button onClick={() => setActiveTab('stats')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded font-medium text-xs md:text-sm transition-colors ${activeTab === 'stats' ? 'bg-yellow-500 text-green-900' : 'bg-green-800 hover:bg-green-700'}`}>Stats</button>
+                    <button onClick={() => setActiveTab('subjects')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded font-medium text-xs md:text-sm transition-colors ${activeTab === 'subjects' ? 'bg-yellow-500 text-green-900' : 'bg-green-800 hover:bg-green-700'}`}><BookOpen size={16} className="inline mr-1"/> Subjects</button>
                     <button onClick={() => setActiveTab('tokens')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded font-medium text-xs md:text-sm transition-colors ${activeTab === 'tokens' ? 'bg-yellow-500 text-green-900' : 'bg-green-800 hover:bg-green-700'}`}><Banknote size={16} className="inline mr-1"/> Tokens</button>
                     <button onClick={() => setActiveTab('users')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded font-medium text-xs md:text-sm transition-colors ${activeTab === 'users' ? 'bg-yellow-500 text-green-900' : 'bg-green-800 hover:bg-green-700'}`}>Candidates</button>
                     <button onClick={() => setActiveTab('questions')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded font-medium text-xs md:text-sm transition-colors ${activeTab === 'questions' ? 'bg-yellow-500 text-green-900' : 'bg-green-800 hover:bg-green-700'}`}><List size={16} className="inline mr-1"/> Bank</button>
                     <button onClick={() => setActiveTab('add')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded font-medium text-xs md:text-sm transition-colors ${activeTab === 'add' ? 'bg-yellow-500 text-green-900' : 'bg-green-800 hover:bg-green-700'}`}>Add</button>
                     <button onClick={() => setActiveTab('bulk')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded font-medium text-xs md:text-sm transition-colors ${activeTab === 'bulk' ? 'bg-yellow-500 text-green-900' : 'bg-green-800 hover:bg-green-700'}`}>Upload</button>
-                    
+
                     <button onClick={() => setActiveTab('settings')} className={`px-3 py-1.5 md:px-4 md:py-2 rounded font-medium text-xs md:text-sm transition-colors ${activeTab === 'settings' ? 'bg-yellow-500 text-green-900' : 'bg-green-800 hover:bg-green-700'}`}>
                         <Settings size={16} className="inline mr-1"/> Settings
                     </button>
@@ -984,7 +1031,109 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
                         </form>
                     </div>
                 )}
-                
+
+                {activeTab === 'subjects' && (
+                    <div className="h-full flex flex-col md:flex-row gap-6">
+                         <div className="w-full md:w-1/3 bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700">
+                             <h3 className="font-bold text-gray-800 dark:text-white mb-4 border-b pb-2">Add New Subject</h3>
+                             <form onSubmit={handleAddSubject} className="space-y-4">
+                                 <div>
+                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Subject Name</label>
+                                     <input
+                                         className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white"
+                                         placeholder="e.g. French"
+                                         value={newSubjectName}
+                                         onChange={e => setNewSubjectName(e.target.value)}
+                                         required
+                                     />
+                                 </div>
+                                 <div>
+                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Category</label>
+                                     <select
+                                         className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white font-bold text-sm"
+                                         value={newSubjectCategory}
+                                         onChange={e => setNewSubjectCategory(e.target.value as any)}
+                                     >
+                                         <option value="General">General (Core)</option>
+                                         <option value="Science">Science</option>
+                                         <option value="Commercial">Commercial</option>
+                                         <option value="Arts">Arts</option>
+                                     </select>
+                                 </div>
+                                 <Button
+                                     isLoading={isLoading}
+                                     className="w-full text-white bg-green-700"
+                                 >
+                                     <Plus size={16} className="inline mr-1"/> Add Subject
+                                 </Button>
+                             </form>
+                        </div>
+
+                        <div className="flex-1 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col">
+                            <div className="p-4 bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600 font-bold text-sm text-gray-700 dark:text-gray-200 flex justify-between items-center">
+                                <span>All Subjects ({allSubjects.length})</span>
+                            </div>
+                            <div className="overflow-auto flex-1 p-0 w-full">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-gray-50 dark:bg-gray-700 text-xs uppercase text-gray-500 sticky top-0">
+                                        <tr>
+                                            <th className="px-4 py-3">Subject Name</th>
+                                            <th className="px-4 py-3">Category</th>
+                                            <th className="px-4 py-3 text-center">Questions</th>
+                                            <th className="px-4 py-3 text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {allSubjects.map(s => {
+                                            const counts = stats[s.name] || { JAMB: 0, WAEC: 0 };
+                                            const total = counts.JAMB + counts.WAEC;
+                                            return (
+                                            <tr key={s.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                                <td className="px-4 py-3">
+                                                    <span className="font-bold text-gray-800 dark:text-gray-200">{s.name}</span>
+                                                    {s.is_compulsory && <span className="ml-2 text-[9px] bg-yellow-100 text-yellow-800 px-1 rounded font-bold">COMPULSORY</span>}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                                                        s.category === 'General' ? 'bg-purple-100 text-purple-700' :
+                                                        s.category === 'Science' ? 'bg-teal-100 text-teal-700' :
+                                                        s.category === 'Commercial' ? 'bg-amber-100 text-amber-700' :
+                                                        'bg-pink-100 text-pink-700'
+                                                    }`}>
+                                                        {s.category}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <div className="flex justify-center gap-2 text-xs">
+                                                        <span className="bg-green-100 text-green-800 px-2 rounded font-mono">J: {counts.JAMB}</span>
+                                                        <span className="bg-blue-100 text-blue-800 px-2 rounded font-mono">W: {counts.WAEC}</span>
+                                                        <span className="font-bold">= {total}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <button
+                                                        onClick={() => handleDeleteSubject(s.id, s.name)}
+                                                        className="p-2 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                        title="Delete Subject"
+                                                    >
+                                                        <Trash2 size={16}/>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                            );
+                                        })}
+                                        {allSubjects.length === 0 && (
+                                            <tr>
+                                                <td colSpan={4} className="p-4 text-center text-gray-400 text-xs">No subjects yet. Add your first subject!</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {(activeTab === 'add' || activeTab === 'bulk') && (
                      <div className="p-4">
                          {/* Exam Selector */}
@@ -996,7 +1145,7 @@ export const AdminPanel: React.FC<Props> = ({ onBack, theme, toggleTheme, isOnli
                          {activeTab === 'add' && (
                              <div className="max-w-lg mx-auto space-y-4">
                                  <select className="w-full p-2 border rounded dark:bg-gray-700 dark:text-white" value={newQ.subject} onChange={e => setNewQ({...newQ, subject: e.target.value as Subject})}>
-                                     {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
+                                     {allSubjects.length > 0 ? allSubjects.map(s => <option key={s.id} value={s.name}>{s.name}</option>) : <option>Loading subjects...</option>}
                                  </select>
                                  <textarea className="w-full p-2 border rounded h-24 dark:bg-gray-700 dark:text-white" placeholder="Question Text" value={newQ.text || ''} onChange={e => setNewQ({...newQ, text: e.target.value})} />
                                  <div className="grid grid-cols-2 gap-2">

@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { Subject, ExamResult, ExamType } from '../types';
+import { Subject, ExamResult, ExamType, SubjectInfo } from '../types';
 import { CheckCircle, PlayCircle, LogOut, User as UserIcon, History, Calendar, Key, X, GraduationCap, Eye, ChevronDown, Moon, Sun, Layers, MousePointer2, Lock, Star, Calculator, PartyPopper, MessageSquare } from 'lucide-react';
 import { Button } from './Button';
 import { User, changePassword } from '../services/auth';
-import { getStudentResults } from '../services/db';
+import { getStudentResults, getAllSubjects } from '../services/db';
 import { ContactModal } from './ContactModal';
 import { AcenexaLogo } from './ExamLogos';
 
@@ -21,21 +21,6 @@ interface Props {
   toggleTheme: () => void;
 }
 
-// Categorized Subjects for better UI
-const WAEC_SUBJECTS = {
-    'General (Core)': ['English', 'Mathematics', 'Civic Education'] as Subject[],
-    'Science': ['Physics', 'Chemistry', 'Biology', 'Further Mathematics', 'Agricultural Science', 'Geography', 'Computer Studies'] as Subject[],
-    'Commercial': ['Economics', 'Commerce', 'Financial Accounting'] as Subject[],
-    'Arts': ['Government', 'Literature', 'CRS', 'History'] as Subject[]
-};
-
-// Flattened list for JAMB
-const JAMB_SUBJECTS: Subject[] = [
-  'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Agricultural Science',
-  'Economics', 'Government', 'Literature', 'CRS', 'Geography', 'Commerce',
-  'Civic Education', 'History', 'Financial Accounting', 'Further Mathematics', 'Computer Studies'
-];
-
 export const SubjectSelection: React.FC<Props> = ({ onStartExam, hasSavedSession, onResume, onLogout, onReview, user, examType, setExamType, theme, toggleTheme }) => {
   const [selected, setSelected] = useState<Subject[]>([]);
   const [history, setHistory] = useState<ExamResult[]>([]);
@@ -43,11 +28,36 @@ export const SubjectSelection: React.FC<Props> = ({ onStartExam, hasSavedSession
   const [showContact, setShowContact] = useState(false);
   const [pwdData, setPwdData] = useState({ old: '', new: '', confirm: '' });
 
+  // Dynamic subjects
+  const [allSubjects, setAllSubjects] = useState<SubjectInfo[]>([]);
+  const [jambSubjects, setJambSubjects] = useState<Subject[]>([]);
+  const [waecSubjects, setWaecSubjects] = useState<Record<string, Subject[]>>({});
+
   useEffect(() => {
     if (user.username) {
         // Fetch history async
         getStudentResults(user.username).then(res => setHistory(res)).catch(console.error);
     }
+
+    // Fetch dynamic subjects
+    getAllSubjects().then(subjects => {
+        setAllSubjects(subjects);
+
+        // Build JAMB subjects (flat list excluding English which is compulsory)
+        const jamb = subjects.filter(s => !s.is_compulsory).map(s => s.name);
+        setJambSubjects(jamb);
+
+        // Build WAEC subjects (grouped by category)
+        const waecGroups: Record<string, Subject[]> = {};
+        subjects.forEach(s => {
+            const categoryKey = s.category === 'General' ? 'General (Core)' : s.category;
+            if (!waecGroups[categoryKey]) {
+                waecGroups[categoryKey] = [];
+            }
+            waecGroups[categoryKey].push(s.name);
+        });
+        setWaecSubjects(waecGroups);
+    }).catch(console.error);
   }, [user]);
 
   // Reset selection when exam type changes
@@ -264,34 +274,46 @@ export const SubjectSelection: React.FC<Props> = ({ onStartExam, hasSavedSession
                 
                 <div className="max-h-[300px] md:max-h-[400px] overflow-y-auto pr-2 custom-scroll space-y-4">
                     {isJamb ? (
-                        <div className="grid grid-cols-2 gap-2">
-                            {JAMB_SUBJECTS.map(renderSubjectButton)}
-                        </div>
+                        jambSubjects.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-2">
+                                {jambSubjects.map(renderSubjectButton)}
+                            </div>
+                        ) : (
+                            <div className="text-center text-gray-400 py-8">
+                                <p className="text-sm">Loading subjects...</p>
+                            </div>
+                        )
                     ) : (
                         // WAEC Grouped Layout
-                        <div className="space-y-6">
-                            {Object.entries(WAEC_SUBJECTS).map(([category, subjects]) => (
-                                <div key={category}>
-                                    <h4 className={`text-xs font-extrabold uppercase mb-2 border-b pb-1 flex items-center gap-2 ${
-                                        category.includes('General') ? 'text-purple-600 border-purple-200 dark:text-purple-400 dark:border-purple-800' :
-                                        category.includes('Science') ? 'text-teal-600 border-teal-200 dark:text-teal-400 dark:border-teal-800' :
-                                        category.includes('Commercial') ? 'text-amber-600 border-amber-200 dark:text-amber-400 dark:border-amber-800' :
-                                        'text-pink-600 border-pink-200 dark:text-pink-400 dark:border-pink-800'
-                                    }`}>
-                                        <span className={`w-2 h-2 rounded-full ${
-                                            category.includes('General') ? 'bg-purple-500' :
-                                            category.includes('Science') ? 'bg-teal-500' :
-                                            category.includes('Commercial') ? 'bg-amber-500' :
-                                            'bg-pink-500'
-                                        }`}></span>
-                                        {category}
-                                    </h4>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {subjects.map(renderSubjectButton)}
+                        Object.keys(waecSubjects).length > 0 ? (
+                            <div className="space-y-6">
+                                {Object.entries(waecSubjects).map(([category, subjects]) => (
+                                    <div key={category}>
+                                        <h4 className={`text-xs font-extrabold uppercase mb-2 border-b pb-1 flex items-center gap-2 ${
+                                            category.includes('General') ? 'text-purple-600 border-purple-200 dark:text-purple-400 dark:border-purple-800' :
+                                            category.includes('Science') ? 'text-teal-600 border-teal-200 dark:text-teal-400 dark:border-teal-800' :
+                                            category.includes('Commercial') ? 'text-amber-600 border-amber-200 dark:text-amber-400 dark:border-amber-800' :
+                                            'text-pink-600 border-pink-200 dark:text-pink-400 dark:border-pink-800'
+                                        }`}>
+                                            <span className={`w-2 h-2 rounded-full ${
+                                                category.includes('General') ? 'bg-purple-500' :
+                                                category.includes('Science') ? 'bg-teal-500' :
+                                                category.includes('Commercial') ? 'bg-amber-500' :
+                                                'bg-pink-500'
+                                            }`}></span>
+                                            {category}
+                                        </h4>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {subjects.map(renderSubjectButton)}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center text-gray-400 py-8">
+                                <p className="text-sm">Loading subjects...</p>
+                            </div>
+                        )
                     )}
                 </div>
             </div>

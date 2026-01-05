@@ -323,6 +323,46 @@ app.delete('/api/users/:username', async (req, res) => {
     }
 });
 
+// SUBJECT MANAGEMENT ROUTES
+app.get('/api/subjects', async (req, res) => {
+    try {
+        const { data, error } = await supabase.from('subjects').select('*').order('name', { ascending: true });
+        if (error) throw error;
+        res.json(data || []);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/subjects', async (req, res) => {
+    const { name, category, is_compulsory } = req.body;
+    if (!name || !category) return res.status(400).json({ error: "Missing required fields" });
+
+    try {
+        const { data, error } = await supabase.from('subjects').insert([{
+            name,
+            category,
+            is_compulsory: is_compulsory || false
+        }]).select().single();
+
+        if (error) throw error;
+        res.json(data);
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+app.delete('/api/subjects/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const { error } = await supabase.from('subjects').delete().eq('id', id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.get('/api/questions', async (req, res) => {
   const { data, error } = await supabase.from('questions').select('*');
   if (error) return res.status(500).json({ error: error.message });

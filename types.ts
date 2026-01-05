@@ -1,22 +1,13 @@
 
-export type Subject =
-  | 'English'
-  | 'Mathematics'
-  | 'Physics'
-  | 'Chemistry'
-  | 'Biology'
-  | 'Agricultural Science'
-  | 'Economics'
-  | 'Government'
-  | 'Literature'
-  | 'CRS'
-  | 'Geography'
-  | 'Commerce'
-  | 'Financial Accounting'
-  | 'Civic Education'
-  | 'Further Mathematics'
-  | 'History'
-  | 'Computer Studies';
+export type Subject = string;
+
+export interface SubjectInfo {
+  id: string;
+  name: string;
+  category: 'General' | 'Science' | 'Commercial' | 'Arts';
+  is_compulsory: boolean;
+  created_at: string;
+}
 
 export type ExamType = 'JAMB' | 'WAEC';
 
