@@ -13,25 +13,25 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// --- CORS SETUP ---
+// --- CORS ---
 const allowedOrigins = [
-  'https://ebus-edu-consult-main-i97f.vercel.app',
-  'https://ebus-edu-consult-main.onrender.com',
-  'http://localhost:5173',
-  'http://localhost:3000'
+  'https://acenexacbt.vercel.app',       // NEW FRONTEND
+  'https://acenexacbt.onrender.com',     // NEW BACKEND
+  'http://localhost:5173',               // local dev
+  'http://localhost:3000'                // local dev
 ];
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) return callback(null, true);
+    if (!origin) return callback(null, true); // allow mobile apps, curl, etc.
+    if (allowedOrigins.indexOf(origin) === -1) return callback(null, true); // permissive fallback
     return callback(null, true);
   }
 }));
 
 app.use(express.json({ limit: '50mb' }));
 
-// --- SUPABASE SETUP ---
+// --- SUPABASE ---
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
@@ -45,8 +45,6 @@ const supabase = createClient(
 );
 
 // --- HELPERS ---
-
-// Generate Access Code
 const generateAccessCode = (prefix = 'ACE') => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const length = 12;
@@ -60,7 +58,6 @@ const generateAccessCode = (prefix = 'ACE') => {
   return `${prefix}-${result.slice(0,4)}-${result.slice(4,8)}-${result.slice(8,12)}`;
 };
 
-// Create Access Code (student or admin)
 async function createAccessCode({ createdBy = 'student', price = 0 }) {
   const code = generateAccessCode('ACE');
   const { data, error } = await supabase
@@ -72,7 +69,6 @@ async function createAccessCode({ createdBy = 'student', price = 0 }) {
   return data.code;
 }
 
-// Bind Access Code to Candidate & Device
 async function bindAccessCode({ code, candidateId, deviceFingerprint }) {
   const { data, error } = await supabase
       .from('access_codes')
@@ -99,76 +95,104 @@ async function bindAccessCode({ code, candidateId, deviceFingerprint }) {
   return { success: true, message: 'Access Code bound to device' };
 }
 
-// Verify Offline Access
-async function verifyOfflineAccess({ code, deviceFingerprint }) {
-  const { data, error } = await supabase
-      .from('access_codes')
-      .select('*')
-      .eq('code', code)
-      .eq('device_fingerprint', deviceFingerprint)
-      .single();
-  if (error || !data) throw new Error('Access Code not valid on this device');
-  return { success: true, candidateId: data.candidate_id };
-}
-
 // --- ROUTES ---
 
 // Health Check
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-// PAYMENT VERIFICATION & TOKEN GENERATION
-app.post('/api/payments/verify-paystack', async (req, res) => {
-  const { reference, email, fullName, phoneNumber, examType } = req.body;
-  if (!reference) return res.status(400).json({ error: "Missing transaction reference." });
-  if (!paystackSecretKey) return res.status(500).json({ error: "Missing Paystack Key" });
+// --------------------
+// ADMIN LOGIN
+// --------------------
+app.post('/api/admin/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Missing username or password.' });
 
   try {
-    const { data: existingToken } = await supabase
-      .from('access_tokens')
-      .select('token_code, is_active')
-      .eq('metadata->>payment_ref', reference)
+    const { data: admin, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username)
+      .eq('role', 'admin')
       .single();
 
-    if (existingToken) return res.json({ success: true, token: existingToken.token_code, message: "Payment already verified." });
+    if (error || !admin || admin.password !== password)
+      return res.status(401).json({ error: 'Invalid credentials' });
 
-    const paystackUrl = `https://api.paystack.co/transaction/verify/${reference}`;
-    const verifyRes = await axios.get(paystackUrl, { headers: { Authorization: `Bearer ${paystackSecretKey}` } });
-    const data = verifyRes.data.data;
-
-    if (data.status !== 'success' || data.amount < 150000) return res.status(400).json({ error: "Payment verification failed." });
-
-    const tokenCode = generateAccessCode('ACE');
-    const finalExamType = examType || 'BOTH';
-
-    const { data: dbData, error } = await supabase
-      .from('access_tokens')
-      .insert([{
-          token_code: tokenCode,
-          is_active: true,
-          device_fingerprint: null,
-          metadata: {
-              payment_ref: reference,
-              amount_paid: data.amount / 100,
-              exam_type: finalExamType,
-              full_name: fullName,
-              phone_number: phoneNumber,
-              email: email,
-              paystack_id: data.id,
-              verified_at: new Date().toISOString()
-          }
-      }])
-      .select()
-      .single();
-
-    if (error) throw error;
-    res.json({ success: true, token: dbData.token_code });
+    const { password: _, ...adminInfo } = admin;
+    return res.json({ success: true, user: adminInfo });
   } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.status(500).json({ error: "Server Error: Could not verify payment." });
+    return res.status(500).json({ error: err.message });
   }
 });
 
-// ADMIN ROUTES
+// --------------------
+// USER LOGIN
+// --------------------
+app.post('/api/auth/login', async (req, res) => {
+  const { username, password, role } = req.body;
+  try {
+    const { data: user, error } = await supabase.from('users')
+        .select('*')
+        .eq('username', username)
+        .eq('role', role)
+        .single();
+
+    if (error || !user || user.password !== password) return res.status(401).json({ error: 'Invalid credentials' });
+    const { password: _, ...userInfo } = user;
+    res.json(userInfo);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --------------------
+// REGISTER MANUAL STUDENT
+// --------------------
+app.post('/api/auth/register', async (req, res) => {
+  const { fullName, regNumber } = req.body;
+  try {
+    const { data, error } = await supabase.from('users').insert([{
+      username: regNumber,
+      role: 'student',
+      full_name: fullName,
+      reg_number: regNumber,
+      password: null,
+      allowed_exam_type: 'BOTH'
+    }]).select().single();
+
+    if (error) throw error;
+    res.json({ success: true, user: data });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// --------------------
+// LOGIN WITH TOKEN (STUDENT) & BIND DEVICE
+// --------------------
+app.post('/api/auth/login-with-token', async (req, res) => {
+  const { token, deviceFingerprint, confirm_binding, candidateId } = req.body;
+  try {
+    const { data: tokenData, error } = await supabase.from('access_codes').select('*').eq('code', token).single();
+    if (error || !tokenData) return res.status(401).json({ error: 'Invalid Access Token.' });
+    if (!tokenData.is_active) return res.status(403).json({ error: 'This token has been deactivated.' });
+
+    if (!tokenData.device_fingerprint) {
+      if (!confirm_binding) return res.json({ requires_binding: true });
+      const result = await bindAccessCode({ code: token, candidateId, deviceFingerprint });
+      return res.json({ success: true, message: result.message });
+    } else {
+      if (tokenData.device_fingerprint !== deviceFingerprint) return res.status(403).json({ error: 'Access Code locked to another device.' });
+    }
+
+    res.json({ success: true, candidateId: tokenData.candidate_id, token, message: 'Access Code valid for this device' });
+  } catch (err) {
+    console.error('Token login error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --------------------
+// ADMIN ACCESS CODE MANAGEMENT
+// --------------------
 app.post('/api/admin/generate-code', async (req, res) => {
   const { price = 0 } = req.body;
   try {
@@ -185,36 +209,42 @@ app.post('/api/access-code/purchase', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// LOGIN WITH TOKEN AND DEVICE BINDING
-app.post('/api/auth/login-with-token', async (req, res) => {
-  const { token, deviceFingerprint, confirm_binding, candidateId } = req.body;
+// --------------------
+// SUBJECTS
+// --------------------
+app.get('/api/subjects', async (req, res) => {
   try {
-    const { data: tokenData, error } = await supabase.from('access_codes').select('*').eq('code', token).single();
-    if (error || !tokenData) return res.status(401).json({ error: 'Invalid Access Token.' });
-    if (!tokenData.is_active) return res.status(403).json({ error: 'This token has been deactivated.' });
-
-    if (!tokenData.device_fingerprint) {
-      if (!confirm_binding) return res.json({ requires_binding: true });
-      const result = await bindAccessCode({ code: token, candidateId, deviceFingerprint });
-      return res.json({ success: true, message: result.message });
-    } else {
-      if (tokenData.device_fingerprint !== deviceFingerprint) {
-        return res.status(403).json({ error: 'Access Code locked to another device.' });
-      }
-    }
-
-    res.json({ success: true, candidateId: tokenData.candidate_id, token, message: 'Access Code valid for this device' });
-  } catch (err) {
-    console.error('Token login error:', err);
-    res.status(500).json({ error: err.message });
-  }
+    const { data, error } = await supabase.from('subjects').select('*').order('name');
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- EXISTING USER AUTH, SUBJECTS, QUESTIONS, RESULTS ROUTES ---
-// Keep all your original /api/auth/login, /api/subjects, /api/questions, /api/results endpoints here
-// You can copy them as-is from your existing server.js
+app.post('/api/subjects', async (req, res) => {
+  const { name, category, is_compulsory } = req.body;
+  if (!name || !category) return res.status(400).json({ error: "Missing required fields" });
+  try {
+    const { data, error } = await supabase.from('subjects').insert([{ name, category, is_compulsory: is_compulsory || false }]).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
 
-// --- SERVE FRONTEND ---
+app.delete('/api/subjects/:id', async (req, res) => {
+  const { id } = req.params;
+  const { error } = await supabase.from('subjects').delete().eq('id', id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// --------------------
+// QUESTIONS & RESULTS
+// --------------------
+// Keep all your previous questions/results routes here exactly as in your existing server.js
+
+// --------------------
+// SERVE FRONTEND
+// --------------------
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const distPath = path.join(__dirname, 'dist');
@@ -223,13 +253,11 @@ if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
 } else {
-  app.get('*', (req, res) => {
-    res.status(503).send(`
-      <h1>Website Building...</h1>
-      <p>The backend is running, but the frontend files are missing.</p>
-      <p>Ensure Build Command: <code>npm install && npm run build</code></p>
-    `);
-  });
+  app.get('*', (req, res) => res.status(503).send(`
+    <h1>Website Building...</h1>
+    <p>The backend is running, but frontend files are missing.</p>
+    <p>Ensure Build Command: <code>npm install && npm run build</code></p>
+  `));
 }
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
