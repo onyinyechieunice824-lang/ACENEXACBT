@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Send, CheckCircle, MessageSquare } from 'lucide-react';
-import { Button } from './Button';
+import Button from './Button';
 
 interface Props {
   isOpen: boolean;
@@ -9,7 +9,12 @@ interface Props {
   initialEmail?: string;
 }
 
-export const ContactModal: React.FC<Props> = ({ isOpen, onClose, initialName = '', initialEmail = '' }) => {
+const ContactModal: React.FC<Props> = ({
+  isOpen,
+  onClose,
+  initialName = '',
+  initialEmail = ''
+}) => {
   const [formData, setFormData] = useState({
     name: initialName,
     email: initialEmail,
@@ -21,12 +26,18 @@ export const ContactModal: React.FC<Props> = ({ isOpen, onClose, initialName = '
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Safe API URL usage: fallback if env variable is missing
+    const API_URL = import.meta.env.VITE_API_URL || 'https://fallback-url.com';
+    
+    console.log('Sending to:', API_URL);
     console.log('Contact Form Submission:', formData);
+
     setSubmitted(true);
     setTimeout(() => {
-        setSubmitted(false);
-        setFormData({ ...formData, message: '' });
-        onClose();
+      setSubmitted(false);
+      setFormData({ ...formData, message: '' });
+      onClose();
     }, 2500);
   };
 
@@ -41,7 +52,7 @@ export const ContactModal: React.FC<Props> = ({ isOpen, onClose, initialName = '
             <X size={20} />
           </button>
         </div>
-        
+
         <div className="p-6">
           {submitted ? (
             <div className="text-center py-8">
@@ -49,7 +60,9 @@ export const ContactModal: React.FC<Props> = ({ isOpen, onClose, initialName = '
                 <CheckCircle size={32} />
               </div>
               <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-2">Message Sent!</h3>
-              <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">Thank you for reaching out.<br/>We will get back to you shortly.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
+                Thank you for reaching out.<br/>We will get back to you shortly.
+              </p>
               <Button onClick={onClose} variant="outline" className="text-sm">Close</Button>
             </div>
           ) : (
@@ -87,7 +100,10 @@ export const ContactModal: React.FC<Props> = ({ isOpen, onClose, initialName = '
                   placeholder="How can we help you today?"
                 />
               </div>
-              <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2 py-3 shadow-lg shadow-blue-900/20">
+              <Button
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2 py-3 shadow-lg shadow-blue-900/20"
+              >
                 <Send size={16} /> Send Message
               </Button>
             </form>
@@ -97,3 +113,5 @@ export const ContactModal: React.FC<Props> = ({ isOpen, onClose, initialName = '
     </div>
   );
 };
+
+export default ContactModal;
