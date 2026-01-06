@@ -14,7 +14,7 @@ export const FORCE_OFFLINE = false;
 
 // Paystack (public key)
 export const PAYSTACK_PUBLIC_KEY =
-  "pk_test_1234567890abcdefghijklmnopqrstuvwxyz";
+  "pk_live_6285198feb88d1bf9515732e6eea990012a8344e";
 
 export const getApiUrl = (endpoint: string) => {
   const base = BACKEND_URL.replace(/\/$/, "");
